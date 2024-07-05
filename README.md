@@ -1,1 +1,1 @@
-An insight service consume work order changes and give some insights by aggereation and reduction.
+An insight service consumes work order changes and give some insights by aggregation and reduction.
