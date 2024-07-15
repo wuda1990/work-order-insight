@@ -19,4 +19,5 @@ public class TaskChange {
 
     private Integer newDepartment;
 
+
 }
