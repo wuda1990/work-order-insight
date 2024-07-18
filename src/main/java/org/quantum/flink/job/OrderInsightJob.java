@@ -5,13 +5,16 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.KafkaSourceBuilder;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
-import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
+import org.apache.flink.streaming.api.windowing.assigners.SlidingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.quantum.flink.function.TaskCountingAggregator;
+import org.quantum.flink.function.TaskStatisticCollector;
 import org.quantum.flink.model.TaskChange;
 import org.quantum.flink.model.TaskChangeDeserializationSchema;
+import org.quantum.flink.model.TaskStatistic;
 
 import java.util.Properties;
 
@@ -32,12 +35,12 @@ public class OrderInsightJob {
         final DataStreamSource<TaskChange> taskChanges = env.fromSource(source, WatermarkStrategy.noWatermarks(),
             "Kafka Source");
         taskChanges.print();
-        final DataStream<TaskChange> broadcast = taskChanges.broadcast();
-        broadcast.filter(taskChange -> taskChange.getNewOperator() != null && taskChange.getNewStatus() != null)
-            .keyBy(taskChange -> String.join("-", taskChange.getNewOperator(), taskChange.getNewStatus().toString()))
-            .window(TumblingProcessingTimeWindows.of(Time.hours(1)));
-        ;
-        //aggregate by current operator and task status
+        final SingleOutputStreamOperator<TaskStatistic> aggregate = taskChanges.keyBy(
+                taskChange -> String.join("-", taskChange.getOperator(), String.valueOf(taskChange.getStatus())))
+//            .window(TumblingProcessingTimeWindows.of(Time.minutes(1)))
+            .window(SlidingProcessingTimeWindows.of(Time.minutes(30), Time.minutes(1)))
+            .aggregate(new TaskCountingAggregator(), new TaskStatisticCollector());
+        aggregate.print();
 
         env.execute("Order Insight Job");
 

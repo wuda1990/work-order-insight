@@ -7,17 +7,12 @@ public class TaskChange {
 
     private String taskNo;
 
-    private Byte oldStatus;
+    private Byte status;
 
-    private Byte newStatus;
+    private String operator;
 
-    private String oldOperator;
+    private Integer department;
 
-    private String newOperator;
-
-    private Integer oldDepartment;
-
-    private Integer newDepartment;
-
-
+    private Boolean active;
+    
 }
