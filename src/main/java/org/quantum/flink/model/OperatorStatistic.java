@@ -9,13 +9,15 @@ import java.util.Date;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class TaskStatistic {
+public class OperatorStatistic {
 
     private Date windowStart;
 
     private Date windowEnd;
 
     private String operator;
+
+    private Integer status;
 
     private Long count;
 }
