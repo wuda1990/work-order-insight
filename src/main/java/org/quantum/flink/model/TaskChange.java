@@ -2,6 +2,8 @@ package org.quantum.flink.model;
 
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 public class TaskChange {
 
@@ -14,5 +16,7 @@ public class TaskChange {
     private Integer department;
 
     private Boolean active;
-    
+
+    private LocalDateTime changeDt;
+
 }
