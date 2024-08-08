@@ -1,8 +1,10 @@
 package org.quantum.flink.function;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.quantum.flink.model.TaskChange;
 
+@Slf4j
 public class TaskCountingAggregator implements AggregateFunction<TaskChange, Long, Long> {
 
     @Override
@@ -12,6 +14,7 @@ public class TaskCountingAggregator implements AggregateFunction<TaskChange, Lon
 
     @Override
     public Long add(final TaskChange taskChange, final Long accumulator) {
+        log.info("TaskChange: {},accumulator:{}", taskChange, accumulator);
         return taskChange.getActive() ? accumulator + 1 : accumulator - 1;
     }
 

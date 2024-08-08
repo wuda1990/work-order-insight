@@ -13,7 +13,7 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.quantum.flink.function.TaskCountingAggregator;
 import org.quantum.flink.function.TaskStatisticCollector;
@@ -32,39 +32,41 @@ public class OrderInsightJob {
         log.info("OrderInsightJob started");
         Configuration configuration = new Configuration();
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(
-                configuration);
+            configuration);
         env.setParallelism(4);
         KafkaSourceBuilder<TaskChange> builder = KafkaSource.builder();
         final KafkaSource<TaskChange> source = builder
-                .setProperties(getKafkaProperties())
-                .setTopics("work-order")
-                .setStartingOffsets(OffsetsInitializer.earliest())
-                .setValueOnlyDeserializer(new TaskChangeDeserializationSchema())
-                .build();
+            .setProperties(getKafkaProperties())
+            .setTopics("work-order")
+            .setStartingOffsets(OffsetsInitializer.earliest())
+            .setValueOnlyDeserializer(new TaskChangeDeserializationSchema())
+            .build();
         WatermarkStrategy<TaskChange> watermarkStrategy = WatermarkStrategy
-                .<TaskChange>forBoundedOutOfOrderness(Duration.ofMillis(200))
-                .withTimestampAssigner((taskChange, l) ->
-                        taskChange.getChangeDt().atZone(ZoneOffset.systemDefault()).toInstant().toEpochMilli());
+            .<TaskChange>forBoundedOutOfOrderness(Duration.ofMillis(200))
+            .withTimestampAssigner((taskChange, l) ->
+                taskChange.getChangeDt().atZone(ZoneOffset.systemDefault()).toInstant().toEpochMilli())
+            .withIdleness(Duration.ofSeconds(5));
         final DataStreamSource<TaskChange> taskChanges = env.fromSource(source, watermarkStrategy,
-                "Kafka Source");
+            "Kafka Source");
         taskChanges.print();
         final SingleOutputStreamOperator<OperatorStatistic> aggregate = taskChanges.keyBy(
-                        taskChange -> String.join("-", taskChange.getOperator(), String.valueOf(taskChange.getStatus())))
-//            .window(TumblingProcessingTimeWindows.of(Time.minutes(1)))
-                .window(SlidingEventTimeWindows.of(Time.minutes(30), Time.minutes(1)))
-                .aggregate(new TaskCountingAggregator(), new TaskStatisticCollector());
+                taskChange -> String.join("-", taskChange.getOperator(), String.valueOf(taskChange.getStatus())))
+//            .window(SlidingProcessingTimeWindows.of(Time.minutes(30), Time.minutes(1)))
+            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+            .aggregate(new TaskCountingAggregator(), new TaskStatisticCollector())
+            .name("Task Counting Aggregator");
         aggregate.print();
         aggregate.addSink(JdbcSink.sink(
-                "INSERT INTO t_statistics_operator (operator, status, count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE count = VALUES(count)",
-                (JdbcStatementBuilder<OperatorStatistic>) (ps, t) -> {
-                    ps.setString(1, t.getOperator());
-                    ps.setInt(2, t.getStatus());
-                    ps.setLong(3, t.getCount());
-                }, JdbcExecutionOptions.builder()
-                        .withBatchIntervalMs(200)             // optional: default = 0, meaning no time-based execution is done
-                        .withBatchSize(1)                  // optional: default = 5000 values
-                        .withMaxRetries(3)                    // optional: default = 3
-                        .build(), getJdbcConnectionOptions()));
+            "INSERT INTO t_statistics_operator (operator, status, count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE count = VALUES(count)",
+            (JdbcStatementBuilder<OperatorStatistic>) (ps, t) -> {
+                ps.setString(1, t.getOperator());
+                ps.setInt(2, t.getStatus());
+                ps.setLong(3, t.getCount());
+            }, JdbcExecutionOptions.builder()
+                .withBatchIntervalMs(200)             // optional: default = 0, meaning no time-based execution is done
+                .withBatchSize(1)                  // optional: default = 5000 values
+                .withMaxRetries(3)                    // optional: default = 3
+                .build(), getJdbcConnectionOptions()));
 
         env.execute("Order Insight Job");
 
@@ -79,10 +81,10 @@ public class OrderInsightJob {
 
     static JdbcConnectionOptions getJdbcConnectionOptions() {
         return new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
-                .withUrl("jdbc:mysql://localhost:3306/work_order_insight")
-                .withDriverName("com.mysql.cj.jdbc.Driver")
-                .withUsername("root")
-                .build();
+            .withUrl("jdbc:mysql://localhost:3306/work_order_insight")
+            .withDriverName("com.mysql.cj.jdbc.Driver")
+            .withUsername("root")
+            .build();
     }
 
 
