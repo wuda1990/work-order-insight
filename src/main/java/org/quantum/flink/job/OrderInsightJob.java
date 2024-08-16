@@ -3,6 +3,7 @@ package org.quantum.flink.job;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.GlobalConfiguration;
 import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
 import org.apache.flink.connector.jdbc.JdbcExecutionOptions;
 import org.apache.flink.connector.jdbc.JdbcSink;
@@ -30,7 +31,8 @@ public class OrderInsightJob {
 
     public static void main(String[] args) throws Exception {
         log.info("OrderInsightJob started");
-        Configuration configuration = new Configuration();
+        String configDirectory = "src/main/resources";
+        Configuration configuration = GlobalConfiguration.loadConfiguration(configDirectory);
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(
             configuration);
         env.setParallelism(4);
