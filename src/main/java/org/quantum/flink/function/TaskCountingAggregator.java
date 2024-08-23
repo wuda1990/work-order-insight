@@ -14,7 +14,7 @@ public class TaskCountingAggregator implements AggregateFunction<TaskChange, Lon
 
     @Override
     public Long add(final TaskChange taskChange, final Long accumulator) {
-        log.info("TaskChange: {},accumulator:{}", taskChange, accumulator);
+        log.debug("TaskChange: {},accumulator:{}", taskChange, accumulator);
         return taskChange.getActive() ? accumulator + 1 : accumulator - 1;
     }
 

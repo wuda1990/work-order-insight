@@ -14,10 +14,13 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.quantum.flink.function.DepartmentStatisticCollector;
+import org.quantum.flink.function.OperatorStatisticCollector;
 import org.quantum.flink.function.TaskCountingAggregator;
-import org.quantum.flink.function.TaskStatisticCollector;
+import org.quantum.flink.model.DepartmentStatistic;
 import org.quantum.flink.model.OperatorStatistic;
 import org.quantum.flink.model.TaskChange;
 import org.quantum.flink.model.TaskChangeDeserializationSchema;
@@ -51,25 +54,24 @@ public class OrderInsightJob {
         final DataStreamSource<TaskChange> taskChanges = env.fromSource(source, watermarkStrategy,
             "Kafka Source");
         taskChanges.print();
-        final SingleOutputStreamOperator<OperatorStatistic> aggregate = taskChanges.keyBy(
+        final SingleOutputStreamOperator<OperatorStatistic> operatorAggregator = taskChanges.keyBy(
                 taskChange -> String.join("-", taskChange.getOperator(), String.valueOf(taskChange.getStatus())))
 //            .window(SlidingProcessingTimeWindows.of(Time.minutes(30), Time.minutes(1)))
             .window(TumblingEventTimeWindows.of(Time.minutes(1)))
-            .aggregate(new TaskCountingAggregator(), new TaskStatisticCollector())
-            .name("Task Counting Aggregator");
-        aggregate.print();
-        aggregate.addSink(JdbcSink.sink(
-            "INSERT INTO t_statistics_operator (operator, status, count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE count = VALUES(count)",
-            (JdbcStatementBuilder<OperatorStatistic>) (ps, t) -> {
-                ps.setString(1, t.getOperator());
-                ps.setInt(2, t.getStatus());
-                ps.setLong(3, t.getCount());
-            }, JdbcExecutionOptions.builder()
-                .withBatchIntervalMs(200)             // optional: default = 0, meaning no time-based execution is done
-                .withBatchSize(1)                  // optional: default = 5000 values
-                .withMaxRetries(3)                    // optional: default = 3
-                .build(), getJdbcConnectionOptions()));
+            .aggregate(new TaskCountingAggregator(), new OperatorStatisticCollector())
+            .name("Operator-Aggregator");
+        operatorAggregator.print();
+        operatorAggregator.addSink(getOperatorStatisticSink()).name("Operator-Sink");
 
+        final SingleOutputStreamOperator<DepartmentStatistic> departmentAggregator = taskChanges.keyBy(
+                taskChange -> String.join("-", String.valueOf(taskChange.getDepartment()),
+                    String.valueOf(taskChange.getStatus())))
+            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+            .aggregate(new TaskCountingAggregator(), new DepartmentStatisticCollector())
+            .name("Department-Aggregator");
+        departmentAggregator.print();
+        departmentAggregator.addSink(getDepartmentStatisticSink()).name("Department-Sink");
+        
         env.execute("Order Insight Job");
 
     }
@@ -89,5 +91,32 @@ public class OrderInsightJob {
             .build();
     }
 
+    static SinkFunction<OperatorStatistic> getOperatorStatisticSink() {
+        return JdbcSink.sink(
+            "INSERT INTO t_statistics_operator (operator, status, count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE count = VALUES(count)",
+            (JdbcStatementBuilder<OperatorStatistic>) (ps, t) -> {
+                ps.setString(1, t.getOperator());
+                ps.setInt(2, t.getStatus());
+                ps.setLong(3, t.getCount());
+            }, JdbcExecutionOptions.builder()
+                .withBatchIntervalMs(200)             // optional: default = 0, meaning no time-based execution is done
+                .withBatchSize(1)                  // optional: default = 5000 values
+                .withMaxRetries(3)                    // optional: default = 3
+                .build(), getJdbcConnectionOptions());
+    }
+
+    static SinkFunction<DepartmentStatistic> getDepartmentStatisticSink() {
+        return JdbcSink.sink(
+            "INSERT INTO t_statistics_department (department, status, count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE count = VALUES(count)",
+            (JdbcStatementBuilder<DepartmentStatistic>) (ps, t) -> {
+                ps.setInt(1, t.getDepartment());
+                ps.setInt(2, t.getStatus());
+                ps.setLong(3, t.getCount());
+            }, JdbcExecutionOptions.builder()
+                .withBatchIntervalMs(200)             // optional: default = 0, meaning no time-based execution is done
+                .withBatchSize(1)                  // optional: default = 5000 values
+                .withMaxRetries(3)                    // optional: default = 3
+                .build(), getJdbcConnectionOptions());
+    }
 
 }

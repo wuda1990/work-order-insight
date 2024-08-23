@@ -9,12 +9,12 @@ import org.quantum.flink.model.OperatorStatistic;
 import java.util.Date;
 
 @Slf4j
-public class TaskStatisticCollector extends ProcessWindowFunction<Long, OperatorStatistic, String, TimeWindow> {
+public class OperatorStatisticCollector extends ProcessWindowFunction<Long, OperatorStatistic, String, TimeWindow> {
 
     @Override
     public void process(final String key,
         final ProcessWindowFunction<Long, OperatorStatistic, String, TimeWindow>.Context context,
-        final Iterable<Long> elements, final Collector<OperatorStatistic> out) throws Exception {
+        final Iterable<Long> elements, final Collector<OperatorStatistic> out) {
         final Long count = elements.iterator().next();
         final String[] split = key.split("-");
         if (split.length != 2) {
@@ -23,7 +23,7 @@ public class TaskStatisticCollector extends ProcessWindowFunction<Long, Operator
         final OperatorStatistic operatorStatistic = new OperatorStatistic(new Date(context.window().getStart()),
             new Date(context.window().getEnd()), split[0],
             Integer.valueOf(split[1]), count);
-        log.info("OperatorStatistic: {}", operatorStatistic);
+        log.debug("OperatorStatistic: {}", operatorStatistic);
         out.collect(operatorStatistic);
     }
 }
